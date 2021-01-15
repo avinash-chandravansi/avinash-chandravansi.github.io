@@ -128,7 +128,7 @@ body {
   border-radius: 100%;
 }
 
-.preloader > .icon {
+.preloader>.icon {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -147,16 +147,33 @@ body {
     margin-top: -30px;
     margin-left: -30px;
   }
+
   .preloader:before {
     left: -2px;
     top: -2px;
     border-width: 2px;
   }
-  .preloader > .icon {
+
+  .preloader>.icon {
     height: 37.5px;
     width: 15.9px;
     margin-top: -18.75px;
     margin-left: -7.95px;
+  }
+
+  #im1 {
+    height: 50%;
+    width: 50%;
+  }
+
+  #im2 {
+    height: 50%;
+    width: 50%;
+  }
+
+  #im3 {
+    height: 50%;
+    width: 50%;
   }
 }
 
@@ -167,11 +184,27 @@ body {
     margin-top: -30px;
     margin-left: -30px;
   }
-  .preloader > .icon {
+
+  .preloader>.icon {
     height: 50px;
     width: 21.2px;
     margin-top: -25px;
     margin-left: -10.6px;
+  }
+
+  #im1 {
+    height: 50%;
+    width: 50%;
+  }
+
+  #im2 {
+    height: 50%;
+    width: 50%;
+  }
+
+  #im3 {
+    height: 50%;
+    width: 50%;
   }
 }
 
@@ -180,6 +213,7 @@ body {
     -webkit-transform: rotate(0);
     transform: rotate(0);
   }
+
   to {
     -webkit-transform: rotate(359deg);
     transform: rotate(359deg);
@@ -191,6 +225,7 @@ body {
     -webkit-transform: rotate(0);
     transform: rotate(0);
   }
+
   to {
     -webkit-transform: rotate(359deg);
     transform: rotate(359deg);
@@ -201,6 +236,7 @@ body {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -210,6 +246,7 @@ body {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -768,16 +805,20 @@ fieldset {
     line-height: 50px;
     opacity: none;
   }
+
   #white {
     color: white;
   }
+
   #home,
   .disply-table {
     height: 600px;
   }
+
   .about-border {
     width: 265px;
   }
+
   .portfolio .categories-grid .categories ul li {
     list-style: none;
     margin: 10px 0;
@@ -788,6 +829,7 @@ fieldset {
   nav li {
     margin: 6px;
   }
+
   nav li a {
     font-size: 10px;
   }

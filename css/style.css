@@ -903,7 +903,21 @@ fieldset {
 
   #home,
   .disply-table {
-    height: 600px;
+    height: 100vh;
+  }
+
+  .home-table-cell {
+    padding-bottom: 40px !important;
+  }
+
+  #home h1 {
+    font-size: 34px !important;
+    line-height: 40px !important;
+  }
+
+  #home h3 {
+    font-size: 16px !important;
+    line-height: 22px !important;
   }
 
   .about-border {

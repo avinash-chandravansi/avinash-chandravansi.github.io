@@ -941,7 +941,10 @@ function updateCamera() {
     orbitHeight,
     Math.sin(orbitAngle) * distance
   );
-  camera.lookAt(0, 0, 0);
+  
+  const isMobile = window.innerWidth < 768;
+  const lookAtY = (isMobile ? -2.2 : 0.0) * (1.0 - scrollPercent);
+  camera.lookAt(0, lookAtY, 0);
 
   uniforms.cameraPosition.value.copy(camera.position);
   

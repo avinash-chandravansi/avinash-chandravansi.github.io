@@ -363,7 +363,7 @@ nav li a {
   -webkit-backdrop-filter: none;
   border: none;
   border-radius: 0;
-  padding: 60px 30px;
+  padding: 0 30px !important;
   box-shadow: none;
   margin-bottom: 0;
   position: relative;
@@ -372,15 +372,16 @@ nav li a {
 /* One continuous glass ribbon covering all content sections */
 .section:not(#home) {
   position: relative;
+  padding: 60px 0 !important;
 }
 
 .section:not(#home)::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(2, 2, 8, 0.35);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(10, 10, 18, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 0;
   pointer-events: none;
 }
@@ -390,26 +391,12 @@ nav li a {
   z-index: 1;
 }
 
-/* ── thin amber top-line separating sections ── */
-.section:not(#home) + .section:not(#home)::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 5%;
-  width: 90%;
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(245, 158, 11, 0.25) 30%,
-    rgba(245, 158, 11, 0.25) 70%,
-    transparent
-  );
-}
-
 @media (max-width: 768px) {
+  .section:not(#home) {
+    padding: 40px 0 !important;
+  }
   .section:not(#home) > .container {
-    padding: 40px 18px;
+    padding: 0 15px !important;
   }
 }
 

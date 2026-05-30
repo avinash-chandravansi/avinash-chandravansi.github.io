@@ -377,6 +377,12 @@ a.active {
   vertical-align: middle;
 }
 
+.home-table-cell {
+  display: table-cell;
+  vertical-align: bottom;
+  padding-bottom: 80px;
+}
+
 .disply-table {
   display: table;
   height: 100vh;

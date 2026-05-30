@@ -105,7 +105,7 @@ h4:before {
   content: "";
   display: block;
   height: 2px;
-  background: #425bb5;
+  background: #8b5cf6;
   top: 9px;
 }
 
@@ -172,7 +172,7 @@ h4:before {
   width: 100%;
   -webkit-animation: rotation 1s linear infinite;
   animation: rotation 1s linear infinite;
-  border: 2px solid #425bb5;
+  border: 2px solid #8b5cf6;
   border-top: 2px solid transparent;
   border-radius: 100%;
 }
@@ -356,12 +356,12 @@ a:focus {
 }
 
 a:hover {
-  color: #425bb5;
+  color: #8b5cf6;
   text-decoration: none;
 }
 
 a.active {
-  color: #425bb5;
+  color: #8b5cf6;
 }
 
 /* home section
@@ -395,7 +395,7 @@ a.active {
 
 .about-border {
   position: absolute;
-  border: 10px solid #425bb5;
+  border: 10px solid #8b5cf6;
   width: 400px;
   height: 400px;
   top: 40px;
@@ -423,7 +423,7 @@ a.active {
   font-family: "Lato", sans-serif;
   text-transform: capitalize;
   letter-spacing: 2px;
-  color: #425bb5;
+  color: #8b5cf6;
   font-size: 16px;
   font-weight: bold;
 }
@@ -463,11 +463,11 @@ a.active {
 .timeline-event:hover .timeline-event-icon {
   -webkit-transform: rotate(-45deg);
   transform: rotate(-45deg);
-  background-color: #425bb5;
+  background-color: #8b5cf6;
 }
 
 .timeline-event:hover .timeline-event-thumbnail {
-  box-shadow: inset 40em 0 0 0 #425bb5;
+  box-shadow: inset 40em 0 0 0 #8b5cf6;
 }
 
 .timeline-event-copy {
@@ -568,7 +568,7 @@ a.active {
 }
 
 .portfolio .categories-grid .categories ul li a.active {
-  background-color: #425bb5;
+  background-color: #8b5cf6;
   padding: 0px 20px;
   color: white;
   text-decoration: none;
@@ -591,7 +591,7 @@ a.active {
   left: 0px;
   height: 100%;
   width: 100%;
-  background-color: #425bb5;
+  background-color: #8b5cf6;
   -webkit-transform: translateY(100%);
   transform: translateY(100%);
   opacity: 0;
@@ -626,7 +626,7 @@ a.active {
 .portfolio_item .portfolio_item_hover .item_info em {
   font-style: normal;
   display: inline-block;
-  background-color: #425bb5;
+  background-color: #8b5cf6;
   padding: 5px 20px;
   color: #fff;
   margin-top: 10px;
@@ -807,11 +807,11 @@ fieldset {
 }
 
 #success p {
-  color: #425bb5;
+  color: #8b5cf6;
   font-size: 15px;
   text-align: center;
   padding: 10px;
-  border: 2px solid #425bb5;
+  border: 2px solid #8b5cf6;
   margin-top: 10px;
 }
 
@@ -825,7 +825,7 @@ fieldset {
 }
 
 #submit {
-  background-color: #425bb5;
+  background-color: #8b5cf6;
   color: #fff;
   padding: 10px 40px;
   border-radius: 0;
@@ -854,7 +854,7 @@ fieldset {
 }
 
 .social li a:hover {
-  color: #425bb5;
+  color: #8b5cf6;
 }
 
 /* Responsive media queries

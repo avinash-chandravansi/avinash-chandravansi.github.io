@@ -605,24 +605,26 @@
                 mouse = vec2(0.0);
             }
             
-            // Add a slow circular movement to the black hole center
-            vec2 autoOffset = vec2(cos(u_time * 0.15), sin(u_time * 0.15)) * 0.08;
-            vec2 center = vec2(0.0) + mouse * 0.2 + autoOffset;
+            // Subtle, slow cosmic drifting for center
+            vec2 autoOffset = vec2(cos(u_time * 0.08), sin(u_time * 0.08)) * 0.05;
+            vec2 center = vec2(0.0) + mouse * 0.15 + autoOffset;
             vec2 dVec = uv - center;
             float r = length(dVec);
             
-            float rs = 0.16;
+            float rs = 0.18; 
             float lensedR = r;
             
+            // Relativistic gravity deflection formula approximation (deflecting coordinates)
             if (r > rs) {
-                lensedR = r - (rs * rs) / r;
+                lensedR = r - (rs * rs * 1.1) / (r - rs * 0.5);
             }
             
             vec2 lensedUv = center + normalize(dVec) * lensedR;
-            float horizon = smoothstep(rs, rs + 0.005, r);
+            float horizon = smoothstep(rs, rs + 0.003, r);
             
-            float tilt = 0.25; 
-            float angle = u_time * 0.12;
+            // Accretion disk tilt projection
+            float tilt = 0.22;
+            float angle = u_time * 0.08;
             mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
             
             vec2 projectedUv = lensedUv;
@@ -632,26 +634,54 @@
             float diskR = length(projectedUv);
             float diskAngle = atan(projectedUv.y, projectedUv.x);
             
-            float diskInner = rs * 1.15;
-            float diskOuter = rs * 4.8;
-            float diskProfile = smoothstep(diskInner, diskInner * 1.4, diskR) * (1.0 - smoothstep(diskInner * 1.4, diskOuter, diskR));
+            // Volumetric gas/dust details
+            float diskInner = rs * 1.1;
+            float diskOuter = rs * 5.5;
+            float diskProfile = smoothstep(diskInner, diskInner * 1.6, diskR) * (1.0 - smoothstep(diskInner * 1.6, diskOuter, diskR));
             
-            float noiseVal = fbm(vec2(diskR * 14.0 - u_time * 1.8, diskAngle * 4.0));
-            float diskIntensity = diskProfile * (0.25 + 0.75 * noiseVal);
+            // Keplerian velocity profile: speed is faster closer to event horizon
+            float speed = 2.4 / (sqrt(diskR) + 0.01);
             
-            vec3 diskColor = mix(vec3(0.55, 0.1, 0.85), vec3(1.0, 0.35, 0.05), smoothstep(diskInner, diskOuter, diskR));
-            vec3 diskGlow = diskColor * diskIntensity * 2.5;
+            // Multiscale fractal noise for accretion disk gas simulation
+            float n1 = fbm(vec2(diskR * 22.0 - u_time * speed, diskAngle * 6.0));
+            float n2 = fbm(vec2(diskR * 10.0 - u_time * speed * 0.5, diskAngle * 12.0 + u_time * 0.1));
+            float noiseVal = mix(n1, n2, 0.45);
             
+            // Relativistic Doppler beaming: gas orbiting towards us (e.g. left side) gets brighter
+            float doppler = 1.0 + 0.75 * (projectedUv.x / (diskR + 0.01));
+            
+            float diskIntensity = diskProfile * (0.15 + 0.85 * noiseVal) * doppler;
+            
+            // Cinematic colors: deep solar gold, bright hot-white near the center, fading to magenta/dark violet on outer edges
+            vec3 colorInner = vec3(1.2, 0.9, 0.75); 
+            vec3 colorMid = vec3(1.0, 0.45, 0.05);   
+            vec3 colorOuter = vec3(0.5, 0.08, 0.75); 
+            
+            vec3 diskColor = mix(colorInner, colorMid, smoothstep(diskInner, diskInner * 2.5, diskR));
+            diskColor = mix(diskColor, colorOuter, smoothstep(diskInner * 2.5, diskOuter, diskR));
+            
+            vec3 diskGlow = diskColor * diskIntensity * 2.8;
+            
+            // Einstein Ring lensing glow (bent light from behind)
             float ringR = length(dVec);
-            float ringProfile = smoothstep(rs, rs * 1.12, ringR) * (1.0 - smoothstep(rs * 1.12, rs * 1.35, ringR));
-            vec3 ringColor = vec3(1.0, 0.45, 0.1) * ringProfile * 1.2;
+            float ringProfile = smoothstep(rs, rs * 1.08, ringR) * (1.0 - smoothstep(rs * 1.08, rs * 1.25, ringR));
+            float ringDoppler = 1.0 + 0.4 * (dVec.x / (ringR + 0.01));
+            vec3 ringColor = vec3(1.0, 0.42, 0.08) * ringProfile * 1.4 * ringDoppler;
             
-            vec3 spaceColor = vec3(0.015, 0.005, 0.035);
-            float stars = smoothstep(0.92, 1.0, hash(uv * 120.0)) * 0.55;
-            float nebula = fbm(uv * 2.5 + u_time * 0.03) * 0.22;
-            vec3 spaceNebula = spaceColor + vec3(0.45, 0.12, 0.7) * nebula + vec3(stars);
+            // Deep space background
+            vec3 spaceColor = vec3(0.006, 0.002, 0.015);
+            float stars = smoothstep(0.93, 1.0, hash(uv * 140.0 + autoOffset * 0.2)) * 0.6;
             
+            // Nebula dust background
+            float nebulaVal = fbm(uv * 2.0 + u_time * 0.015);
+            vec3 nebulaColor = mix(vec3(0.4, 0.08, 0.65), vec3(0.08, 0.2, 0.5), nebulaVal);
+            vec3 spaceNebula = spaceColor + nebulaColor * nebulaVal * 0.35 + vec3(stars);
+            
+            // Combine all layers and mask event horizon
             vec3 finalColor = mix(vec3(0.0), spaceNebula + diskGlow + ringColor, horizon);
+            
+            // Apply gentle vignette & organic bloom
+            finalColor += vec3(1.0, 0.5, 0.1) * (0.005 / (r - rs + 0.01)) * horizon * 0.1;
             
             gl_FragColor = vec4(finalColor, 1.0);
         }

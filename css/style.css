@@ -390,6 +390,16 @@ a.active {
   background: transparent;
 }
 
+.about-glass-card {
+  background: rgba(15, 15, 25, 0.45);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 40px 50px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
 .about-img-div img {
   margin: 0 auto;
 }

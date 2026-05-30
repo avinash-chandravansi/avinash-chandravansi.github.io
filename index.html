@@ -139,15 +139,15 @@
         <div class="about-badges" style="display: flex; gap: 25px; margin-top: 30px; align-items: center; flex-wrap: wrap;">
           <div class="badge-item" style="text-align: center; max-width: 100px;">
             <img src="https://learn.microsoft.com/en-us/media/learn/certification/badges/microsoft-certified-expert-badge.svg" style="width: 75px; height: 75px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));" alt="AZ-305" title="Microsoft Certified: Azure Solutions Architect Expert (AZ-305)">
-            <div style="font-size: 11px; font-weight: bold; margin-top: 8px; color: #425bb5;">AZ-305</div>
+            <div style="font-size: 11px; font-weight: bold; margin-top: 8px; color: #8b5cf6;">AZ-305</div>
           </div>
           <div class="badge-item" style="text-align: center; max-width: 100px;">
             <img src="https://learn.microsoft.com/en-us/media/learn/certification/badges/microsoft-certified-associate-badge.svg" style="width: 75px; height: 75px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));" alt="AZ-700" title="Microsoft Certified: Azure Network Engineer Associate (AZ-700)">
-            <div style="font-size: 11px; font-weight: bold; margin-top: 8px; color: #425bb5;">AZ-700</div>
+            <div style="font-size: 11px; font-weight: bold; margin-top: 8px; color: #8b5cf6;">AZ-700</div>
           </div>
           <div class="badge-item" style="text-align: center; max-width: 100px;">
             <img src="https://learn.microsoft.com/en-us/media/learn/certification/badges/microsoft-certified-associate-badge.svg" style="width: 75px; height: 75px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));" alt="AI-102" title="Microsoft Certified: Azure AI Engineer Associate (AI-102)">
-            <div style="font-size: 11px; font-weight: bold; margin-top: 8px; color: #425bb5;">AI-102</div>
+            <div style="font-size: 11px; font-weight: bold; margin-top: 8px; color: #8b5cf6;">AI-102</div>
           </div>
         </div>
       </div>
@@ -160,7 +160,7 @@
             speed="2" style="width: 100%; height: 100%" loop autoplay></lottie-player>
         </center>
         <!--     <img
-            style="border: 10px solid #425bb5"
+            style="border: 10px solid #8b5cf6"
             src="img/about-img.jpg"
             width="400"
             class="img-responsive"
@@ -497,7 +497,7 @@
 
 
       <!--     <img
-            style="border: 10px solid #425bb5"
+            style="border: 10px solid #8b5cf6"
             src="img/222.jpg"
             width="400"
             class="img-responsive"
@@ -572,29 +572,76 @@
         uniform float u_time;
         uniform vec2 u_mouse;
 
-        float hash(vec2 p) {
-            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        float hash3D(vec3 p) {
+            return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
         }
 
-        float noise(vec2 p) {
-            vec2 i = floor(p);
-            vec2 f = fract(p);
-            vec2 u = f*f*(3.0-2.0*f);
-            return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), u.x),
-                       mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x), u.y);
+        float noise3D(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            vec3 u = f*f*(3.0-2.0*f);
+            
+            return mix(
+                mix(
+                    mix(hash3D(i + vec3(0.0,0.0,0.0)), hash3D(i + vec3(1.0,0.0,0.0)), u.x),
+                    mix(hash3D(i + vec3(0.0,1.0,0.0)), hash3D(i + vec3(1.0,1.0,0.0)), u.x),
+                    u.y
+                ),
+                mix(
+                    mix(hash3D(i + vec3(0.0,0.0,1.0)), hash3D(i + vec3(1.0,0.0,1.0)), u.x),
+                    mix(hash3D(i + vec3(0.0,1.0,1.0)), hash3D(i + vec3(1.0,1.0,1.0)), u.x),
+                    u.y
+                ),
+                u.z
+            );
         }
 
-        float fbm(vec2 p) {
+        float fbmVal(vec3 p) {
             float v = 0.0;
             float a = 0.5;
-            vec2 shift = vec2(100.0);
-            mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
-            for (int i = 0; i < 5; ++i) {
-                v += a * noise(p);
-                p = rot * p * 2.0 + shift;
+            vec3 shift = vec3(100.0);
+            for (int i = 0; i < 4; ++i) {
+                v += a * noise3D(p);
+                p = p * 2.0 + shift;
                 a *= 0.5;
             }
             return v;
+        }
+
+        // Mitchell Charity / Blackbody spectrum approximation
+        vec3 blackbody(float Temp) {
+            float t = Temp / 100.0;
+            float r, g, b;
+            
+            if (t <= 66.0) {
+                r = 1.0;
+            } else {
+                r = t - 60.0;
+                r = 329.698727446 * pow(r, -0.1332047592);
+                r = clamp(r, 0.0, 1.0);
+            }
+            
+            if (t <= 66.0) {
+                g = t;
+                g = 99.4708025861 * log(g) - 161.1195681661;
+                g = clamp(g, 0.0, 1.0);
+            } else {
+                g = t - 60.0;
+                g = 288.1221695283 * pow(g, -0.0755148492);
+                g = clamp(g, 0.0, 1.0);
+            }
+            
+            if (t >= 66.0) {
+                b = 1.0;
+            } else if (t <= 19.0) {
+                b = 0.0;
+            } else {
+                b = t - 10.0;
+                b = 138.5177312231 * log(b) - 305.0447927307;
+                b = clamp(b, 0.0, 1.0);
+            }
+            
+            return vec3(r, g, b);
         }
 
         void main() {
@@ -605,83 +652,135 @@
                 mouse = vec2(0.0);
             }
             
-            // Subtle, slow cosmic drifting for center
-            vec2 autoOffset = vec2(cos(u_time * 0.08), sin(u_time * 0.08)) * 0.05;
-            vec2 center = vec2(0.0) + mouse * 0.15 + autoOffset;
-            vec2 dVec = uv - center;
-            float r = length(dVec);
+            // Camera setup with mouse interaction and slow orbit
+            float angle = u_time * 0.04 + mouse.x * 1.5;
+            float height = 3.2 - mouse.y * 4.5;
+            vec3 camPos = vec3(cos(angle) * 15.0, height, sin(angle) * 15.0);
+            vec3 camTarget = vec3(0.0, 0.0, 0.0);
             
-            float rs = 0.18; 
-            float lensedR = r;
+            vec3 camForward = normalize(camTarget - camPos);
+            vec3 worldUp = vec3(0.0, 1.0, 0.0);
+            vec3 camRight = normalize(cross(worldUp, camForward));
+            vec3 camUp = cross(camForward, camRight);
             
-            // Relativistic gravity deflection formula approximation (deflecting coordinates)
-            if (r > rs) {
-                lensedR = r - (rs * rs * 1.1) / (r - rs * 0.5);
+            float fov = 1.35;
+            vec3 rayDir = normalize(camForward * fov + camRight * uv.x + camUp * uv.y);
+            vec3 rayPos = camPos;
+            vec3 prevPos = camPos;
+            
+            // Accretion disk metrics
+            float innerR = 3.2;
+            float outerR = 9.5;
+            float rs = 2.0;
+            float stepSize = 0.18;
+            
+            vec3 color = vec3(0.0);
+            float alpha = 0.0;
+            bool captured = false;
+            
+            for (int i = 0; i < 75; i++) {
+                float r = length(rayPos);
+                
+                // Event horizon capture check
+                if (r < rs * 1.002) {
+                    captured = true;
+                    break;
+                }
+                
+                // Escape check
+                if (r > 32.0) {
+                    break;
+                }
+                
+                // Accretion disk plane intersection
+                if (prevPos.y * rayPos.y < 0.0) {
+                    float t = -prevPos.y / (rayPos.y - prevPos.y);
+                    vec3 hitPos = mix(prevPos, rayPos, t);
+                    float hitR = length(hitPos.xz);
+                    
+                    if (hitR > innerR && hitR < outerR) {
+                        float hitAngle = atan(hitPos.z, hitPos.x);
+                        
+                        // Keplerian rotation phase and cyclic time with crossfading to prevent winding artifacts
+                        float rotationSpeed = -2.2;
+                        float cycleLength = 8.0;
+                        float cyclicTime = mod(u_time, cycleLength);
+                        float blendFactor = cyclicTime / cycleLength;
+                        
+                        float phase1 = cyclicTime * rotationSpeed / (pow(hitR, 1.5) + 0.001);
+                        float phase2 = (cyclicTime + cycleLength) * rotationSpeed / (pow(hitR, 1.5) + 0.001);
+                        
+                        float rotatedAngle1 = hitAngle + phase1;
+                        float rotatedAngle2 = hitAngle + phase2;
+                        
+                        // Anisotropic turbulence mapping
+                        vec3 noiseCoord1 = vec3(hitR * 9.0, cos(rotatedAngle1) / 0.12, sin(rotatedAngle1) / 0.12);
+                        vec3 noiseCoord2 = vec3(hitR * 9.0, cos(rotatedAngle2) / 0.12, sin(rotatedAngle2) / 0.12);
+                        
+                        float turbulence1 = fbmVal(noiseCoord1);
+                        float turbulence2 = fbmVal(noiseCoord2);
+                        float noiseVal = mix(turbulence2, turbulence1, blendFactor);
+                        
+                        // Temperature profile T(r) = r^(-0.75)
+                        float normR = (hitR - innerR) / (outerR - innerR);
+                        float temp = 1.0 / (pow(hitR / innerR, 0.75) + 0.001);
+                        vec3 tempColor = blackbody(temp * 7800.0);
+                        
+                        // Soft edges
+                        float diskProfile = smoothstep(0.0, 0.12, normR) * (1.0 - smoothstep(0.8, 1.0, normR));
+                        
+                        // Relativistic Doppler Beaming
+                        vec3 velocityDir = vec3(-sin(hitAngle), 0.0, cos(hitAngle));
+                        float velocityMagnitude = 1.0 / (sqrt(hitR / innerR) + 0.001);
+                        float beta = velocityMagnitude * 0.45; // Fraction of light speed
+                        float cosTheta = dot(velocityDir, rayDir);
+                        float dopplerFactor = 1.0 / (1.0 - beta * cosTheta);
+                        float dopplerBoost = pow(dopplerFactor, 3.0);
+                        
+                        float diskIntensity = diskProfile * (0.05 + 0.95 * noiseVal) * clamp(dopplerBoost, 0.15, 7.5);
+                        
+                        float diskAlpha = diskProfile * (0.2 + 0.8 * noiseVal);
+                        vec3 diskRGB = tempColor * diskIntensity * 1.9;
+                        
+                        float remainingAlpha = 1.0 - alpha;
+                        color += diskRGB * remainingAlpha;
+                        alpha += diskAlpha * remainingAlpha;
+                        
+                        if (alpha > 0.98) {
+                            break;
+                        }
+                    }
+                }
+                
+                // Relativistic ray bending: a = -rs/r^2 * u
+                vec3 toCenter = -normalize(rayPos);
+                float bendStrength = (rs / (r * r)) * stepSize * 1.5;
+                rayDir = normalize(rayDir + toCenter * bendStrength);
+                
+                prevPos = rayPos;
+                rayPos += rayDir * stepSize;
             }
             
-            vec2 lensedUv = center + normalize(dVec) * lensedR;
-            float horizon = smoothstep(rs, rs + 0.003, r);
+            // Deep space and nebula background
+            vec3 spaceNebula = vec3(0.0);
+            if (!captured) {
+                float neb1 = fbmVal(rayDir * 2.2 + vec3(u_time * 0.01));
+                float neb2 = fbmVal(rayDir * 4.5 - vec3(u_time * 0.005));
+                
+                vec3 spaceColor = vec3(0.004, 0.002, 0.01);
+                vec3 nebColor1 = vec3(0.35, 0.1, 0.7); // Purple nebula
+                vec3 nebColor2 = vec3(0.05, 0.15, 0.45); // Deep blue
+                
+                vec3 nebula = mix(nebColor1, nebColor2, neb2) * neb1;
+                
+                // Twinkling stars
+                float stars = smoothstep(0.86, 1.0, hash3D(floor(rayDir * 160.0))) * 0.75;
+                stars *= 0.5 + 0.5 * sin(u_time * 2.2 + hash3D(floor(rayDir * 160.0)) * 6.28);
+                
+                spaceNebula = spaceColor + nebula * 0.35 + vec3(stars);
+            }
             
-            // Accretion disk tilt projection
-            float tilt = 0.22;
-            float angle = u_time * 0.08;
-            mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
-            
-            vec2 projectedUv = lensedUv;
-            projectedUv.y /= tilt;
-            projectedUv = rot * projectedUv;
-            
-            float diskR = length(projectedUv);
-            float diskAngle = atan(projectedUv.y, projectedUv.x);
-            
-            // Volumetric gas/dust details
-            float diskInner = rs * 1.1;
-            float diskOuter = rs * 5.5;
-            float diskProfile = smoothstep(diskInner, diskInner * 1.6, diskR) * (1.0 - smoothstep(diskInner * 1.6, diskOuter, diskR));
-            
-            // Keplerian velocity profile: speed is faster closer to event horizon
-            float speed = 2.4 / (sqrt(diskR) + 0.01);
-            
-            // Multiscale fractal noise for accretion disk gas simulation
-            float n1 = fbm(vec2(diskR * 22.0 - u_time * speed, diskAngle * 6.0));
-            float n2 = fbm(vec2(diskR * 10.0 - u_time * speed * 0.5, diskAngle * 12.0 + u_time * 0.1));
-            float noiseVal = mix(n1, n2, 0.45);
-            
-            // Relativistic Doppler beaming: gas orbiting towards us (e.g. left side) gets brighter
-            float doppler = 1.0 + 0.75 * (projectedUv.x / (diskR + 0.01));
-            
-            float diskIntensity = diskProfile * (0.15 + 0.85 * noiseVal) * doppler;
-            
-            // Cinematic colors: deep solar gold, bright hot-white near the center, fading to magenta/dark violet on outer edges
-            vec3 colorInner = vec3(1.2, 0.9, 0.75); 
-            vec3 colorMid = vec3(1.0, 0.45, 0.05);   
-            vec3 colorOuter = vec3(0.5, 0.08, 0.75); 
-            
-            vec3 diskColor = mix(colorInner, colorMid, smoothstep(diskInner, diskInner * 2.5, diskR));
-            diskColor = mix(diskColor, colorOuter, smoothstep(diskInner * 2.5, diskOuter, diskR));
-            
-            vec3 diskGlow = diskColor * diskIntensity * 2.8;
-            
-            // Einstein Ring lensing glow (bent light from behind)
-            float ringR = length(dVec);
-            float ringProfile = smoothstep(rs, rs * 1.08, ringR) * (1.0 - smoothstep(rs * 1.08, rs * 1.25, ringR));
-            float ringDoppler = 1.0 + 0.4 * (dVec.x / (ringR + 0.01));
-            vec3 ringColor = vec3(1.0, 0.42, 0.08) * ringProfile * 1.4 * ringDoppler;
-            
-            // Deep space background
-            vec3 spaceColor = vec3(0.006, 0.002, 0.015);
-            float stars = smoothstep(0.93, 1.0, hash(uv * 140.0 + autoOffset * 0.2)) * 0.6;
-            
-            // Nebula dust background
-            float nebulaVal = fbm(uv * 2.0 + u_time * 0.015);
-            vec3 nebulaColor = mix(vec3(0.4, 0.08, 0.65), vec3(0.08, 0.2, 0.5), nebulaVal);
-            vec3 spaceNebula = spaceColor + nebulaColor * nebulaVal * 0.35 + vec3(stars);
-            
-            // Combine all layers and mask event horizon
-            vec3 finalColor = mix(vec3(0.0), spaceNebula + diskGlow + ringColor, horizon);
-            
-            // Apply gentle vignette & organic bloom
-            finalColor += vec3(1.0, 0.5, 0.1) * (0.005 / (r - rs + 0.01)) * horizon * 0.1;
+            vec3 finalColor = color + spaceNebula * (1.0 - alpha);
             
             gl_FragColor = vec4(finalColor, 1.0);
         }

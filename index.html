@@ -563,647 +563,463 @@
   }
   </script>
   <script type="module">
-    import * as THREE from 'three/webgpu';
-    import { pass, uniform, Fn, Loop, Break, If, screenUV,
-      vec2, vec3, vec4, float,
-      length, normalize, cross, dot, sin, cos, atan, asin, sqrt, pow,
-      fract, clamp, smoothstep, mix, floor, step, sign
-    } from 'three/tsl';
-    import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import * as THREE from 'three/webgpu';
+import { pass, uniform, Fn, Loop, Break, If, screenUV,
+  vec2, vec3, vec4, float,
+  length, normalize, cross, dot, sin, cos, atan, asin, sqrt, pow,
+  fract, clamp, smoothstep, mix, floor, step, sign
+} from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
-    (function() {
-      const canvas = document.getElementById('bg-canvas');
-      if (!canvas) return;
+// ============================================================================
+// CONFIGURATION (exact user parameters)
+// ============================================================================
 
-      let mouseX = 0, mouseY = 0;
-      window.addEventListener('mousemove', (e) => {
-        mouseX = (e.clientX / window.innerWidth) - 0.5;
-        mouseY = (e.clientY / window.innerHeight) - 0.5;
+const config = {
+  blackHoleMass: 0.4,
+  diskInnerRadius: 4.1,
+  diskOuterRadius: 14.5,
+  diskTemperature: 49.78,
+  temperatureFalloff: 5.22,
+  diskBrightness: 5,
+  diskRotationSpeed: -8.7,
+  turbulenceScale: 1.81,
+  turbulenceStretch: 0.75,
+  turbulenceSharpness: 7.4,
+  turbulenceCycleTime: 5,
+  turbulenceLacunarity: 2.5,
+  turbulencePersistence: 0.8,
+  diskEdgeSoftnessInner: 0.18,
+  diskEdgeSoftnessOuter: 0.5,
+  gravitationalLensing: 2.4,
+  dopplerStrength: 1.0,
+  stepSize: 1,
+  starsEnabled: true,
+  starBackgroundColor: '#000000',
+  starDensity: 0.1,
+  starSize: 1.2,
+  starBrightness: 0.1,
+  nebulaEnabled: true,
+  nebula1Scale: 2,
+  nebula1Density: 0.5,
+  nebula1Brightness: 0.01,
+  nebula1Color: '#071f44',
+  nebula2Scale: 5.5,
+  nebula2Density: 0.05,
+  nebula2Brightness: 0.21,
+  nebula2Color: '#010615',
+  bloomStrength: 0.68,
+  bloomRadius: 0,
+  bloomThreshold: 0.45
+};
+
+// ============================================================================
+// SHADER UTILITIES
+// ============================================================================
+
+const hash21 = Fn(([p]) => {
+  const n = sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453);
+  return fract(n);
+});
+
+const hash31 = Fn(([p]) => {
+  const n = sin(dot(p, vec3(127.1, 311.7, 74.7))).mul(43758.5453);
+  return fract(n);
+});
+
+const hash22 = Fn(([p]) => {
+  const px = fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
+  const py = fract(sin(dot(p, vec2(269.5, 183.3))).mul(43758.5453));
+  return vec2(px, py);
+});
+
+const noise3D = Fn(([p]) => {
+  const i = floor(p);
+  const f = fract(p);
+  const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
+  const a = hash31(i);
+  const b = hash31(i.add(vec3(1, 0, 0)));
+  const c = hash31(i.add(vec3(0, 1, 0)));
+  const d = hash31(i.add(vec3(1, 1, 0)));
+  const e = hash31(i.add(vec3(0, 0, 1)));
+  const f2 = hash31(i.add(vec3(1, 0, 1)));
+  const g = hash31(i.add(vec3(0, 1, 1)));
+  const h = hash31(i.add(vec3(1, 1, 1)));
+  return mix(
+    mix(mix(a, b, u.x), mix(c, d, u.x), u.y),
+    mix(mix(e, f2, u.x), mix(g, h, u.x), u.y),
+    u.z
+  );
+});
+
+const fbm = Fn(([p, lacunarity, persistence]) => {
+  const value = float(0.0).toVar();
+  const amplitude = float(0.5).toVar();
+  const pos = p.toVar();
+  value.addAssign(noise3D(pos).mul(amplitude));
+  pos.mulAssign(lacunarity); amplitude.mulAssign(persistence);
+  value.addAssign(noise3D(pos).mul(amplitude));
+  pos.mulAssign(lacunarity); amplitude.mulAssign(persistence);
+  value.addAssign(noise3D(pos).mul(amplitude));
+  pos.mulAssign(lacunarity); amplitude.mulAssign(persistence);
+  value.addAssign(noise3D(pos).mul(amplitude));
+  return value;
+});
+
+const blackbodyColor = Fn(([tempK]) => {
+  const t = clamp(tempK.sub(1000.0).div(9000.0), float(0.0), float(1.0));
+  const red = clamp(float(1.0).sub(t.sub(0.8).mul(2.0)), float(0.5), float(1.0));
+  const green = smoothstep(float(0.0), float(0.5), t)
+    .mul(float(1.0).sub(t.sub(0.7).mul(0.3).max(0.0)));
+  const blue = smoothstep(float(0.3), float(1.0), t).mul(t);
+  return vec3(red, green, blue);
+});
+
+// ============================================================================
+// UNIFORMS
+// ============================================================================
+
+const uniforms = {
+  blackHoleMass: uniform(config.blackHoleMass),
+  diskInnerRadius: uniform(config.diskInnerRadius),
+  diskOuterRadius: uniform(config.diskOuterRadius),
+  diskTemperature: uniform(config.diskTemperature),
+  temperatureFalloff: uniform(config.temperatureFalloff),
+  diskBrightness: uniform(config.diskBrightness),
+  diskRotationSpeed: uniform(config.diskRotationSpeed),
+  turbulenceScale: uniform(config.turbulenceScale),
+  turbulenceStretch: uniform(config.turbulenceStretch),
+  turbulenceSharpness: uniform(config.turbulenceSharpness),
+  turbulenceCycleTime: uniform(config.turbulenceCycleTime),
+  turbulenceLacunarity: uniform(config.turbulenceLacunarity),
+  turbulencePersistence: uniform(config.turbulencePersistence),
+  diskEdgeSoftnessInner: uniform(config.diskEdgeSoftnessInner),
+  diskEdgeSoftnessOuter: uniform(config.diskEdgeSoftnessOuter),
+  gravitationalLensing: uniform(config.gravitationalLensing),
+  dopplerStrength: uniform(config.dopplerStrength),
+  stepSize: uniform(config.stepSize),
+  starsEnabled: uniform(config.starsEnabled ? 1.0 : 0.0),
+  starBackgroundColor: uniform(new THREE.Color(config.starBackgroundColor)),
+  starDensity: uniform(config.starDensity),
+  starSize: uniform(config.starSize),
+  starBrightness: uniform(config.starBrightness),
+  nebulaEnabled: uniform(config.nebulaEnabled ? 1.0 : 0.0),
+  nebula1Scale: uniform(config.nebula1Scale),
+  nebula1Density: uniform(config.nebula1Density),
+  nebula1Brightness: uniform(config.nebula1Brightness),
+  nebula1Color: uniform(new THREE.Color(config.nebula1Color)),
+  nebula2Scale: uniform(config.nebula2Scale),
+  nebula2Density: uniform(config.nebula2Density),
+  nebula2Brightness: uniform(config.nebula2Brightness),
+  nebula2Color: uniform(new THREE.Color(config.nebula2Color)),
+  time: uniform(0),
+  resolution: uniform(new THREE.Vector2(window.innerWidth, window.innerHeight)),
+  cameraPosition: uniform(new THREE.Vector3(0, -2, -18)),
+  cameraTarget: uniform(new THREE.Vector3(0, 0, 0))
+};
+
+// ============================================================================
+// STAR FIELD
+// ============================================================================
+
+const starField = Fn(([rayDir]) => {
+  const theta = atan(rayDir.z, rayDir.x);
+  const phi = asin(clamp(rayDir.y, float(-1.0), float(1.0)));
+  const gridScale = float(60.0).div(uniforms.starSize);
+  const scaledCoord = vec2(theta, phi).mul(gridScale);
+  const cell = floor(scaledCoord);
+  const cellUV = fract(scaledCoord);
+  const cellHash = hash21(cell);
+  const starProb = step(float(1.0).sub(uniforms.starDensity), cellHash);
+  const starPos = hash22(cell.add(42.0)).mul(0.8).add(0.1);
+  const distToStar = length(cellUV.sub(starPos));
+  const baseSizeVar = hash21(cell.add(100.0)).mul(0.03).add(0.01);
+  const finalStarSize = baseSizeVar.mul(uniforms.starSize);
+  const starCore = smoothstep(finalStarSize, float(0.0), distToStar);
+  const starGlow = smoothstep(finalStarSize.mul(3.0), float(0.0), distToStar).mul(0.3);
+  const starIntensity = starCore.add(starGlow).mul(starProb);
+  const colorTemp = hash21(cell.add(200.0));
+  const starColor = mix(vec3(0.8, 0.9, 1.0), vec3(1.0, 0.95, 0.8), colorTemp);
+  return starColor.mul(starIntensity).mul(uniforms.starBrightness);
+});
+
+// ============================================================================
+// NEBULA
+// ============================================================================
+
+const nebulaField = Fn(([rayDir]) => {
+  const noisePos1 = rayDir.mul(uniforms.nebula1Scale);
+  const n1 = fbm(noisePos1, float(2.0), float(0.5)).mul(2.0).sub(1.0);
+  const layer1 = clamp(n1.add(uniforms.nebula1Density), float(0.0), float(1.0));
+  const color1 = uniforms.nebula1Color.mul(layer1).mul(uniforms.nebula1Brightness);
+  const noisePos2 = rayDir.mul(uniforms.nebula2Scale);
+  const n2 = fbm(noisePos2, float(2.0), float(0.5)).mul(2.0).sub(1.0);
+  const layer2 = clamp(n2.add(uniforms.nebula2Density), float(0.0), float(1.0));
+  const color2 = uniforms.nebula2Color.mul(layer2).mul(uniforms.nebula2Brightness);
+  return color1.add(color2);
+});
+
+// ============================================================================
+// ACCRETION DISK
+// ============================================================================
+
+const accretionDiskColor = Fn(([hitR, hitAngle, time, rayDir]) => {
+  const innerR = uniforms.diskInnerRadius;
+  const outerR = uniforms.diskOuterRadius;
+  const normR = clamp(hitR.sub(innerR).div(outerR.sub(innerR)), float(0.0), float(1.0));
+
+  // Blackbody color
+  const peakTempK = uniforms.diskTemperature.mul(1000.0);
+  const outerTempK = float(1500.0);
+  const tempFalloff = pow(innerR.div(hitR), uniforms.temperatureFalloff);
+  const tempK = mix(outerTempK, peakTempK, tempFalloff);
+  const diskColor = blackbodyColor(tempK).toVar('diskColor');
+
+  // Doppler beaming
+  const rotationSign = sign(uniforms.diskRotationSpeed);
+  const velocityDir = vec3(
+    sin(hitAngle).negate().mul(rotationSign),
+    float(0.0),
+    cos(hitAngle).mul(rotationSign)
+  );
+  const velocityMagnitude = float(1.0).div(sqrt(hitR.div(innerR)));
+  const beta = velocityMagnitude.mul(0.3);
+  const cosTheta = dot(velocityDir, rayDir);
+  const dopplerFactor = float(1.0).div(float(1.0).sub(beta.mul(cosTheta)));
+  const dopplerBoost = pow(dopplerFactor, float(3.0).mul(uniforms.dopplerStrength));
+  diskColor.mulAssign(clamp(dopplerBoost, float(0.1), float(5.0)));
+
+  // Edge falloff
+  const edgeFalloff = smoothstep(float(0.0), uniforms.diskEdgeSoftnessInner, normR)
+    .mul(smoothstep(float(1.0), float(1.0).sub(uniforms.diskEdgeSoftnessOuter), normR));
+
+  // Turbulence
+  const ringOpacity = float(1.0).toVar('ringOpacity');
+  const cycleLength = uniforms.turbulenceCycleTime;
+  const cyclicTime = time.mod(cycleLength);
+  const blendFactor = cyclicTime.div(cycleLength);
+  const keplerianPhase1 = cyclicTime.mul(uniforms.diskRotationSpeed).div(pow(hitR, float(1.5)));
+  const keplerianPhase2 = cyclicTime.add(cycleLength).mul(uniforms.diskRotationSpeed).div(pow(hitR, float(1.5)));
+  const rotatedAngle1 = hitAngle.add(keplerianPhase1);
+  const rotatedAngle2 = hitAngle.add(keplerianPhase2);
+  const noiseCoord1 = vec3(
+    hitR.mul(uniforms.turbulenceScale),
+    cos(rotatedAngle1).div(uniforms.turbulenceStretch.max(0.1)),
+    sin(rotatedAngle1).div(uniforms.turbulenceStretch.max(0.1))
+  );
+  const noiseCoord2 = vec3(
+    hitR.mul(uniforms.turbulenceScale),
+    cos(rotatedAngle2).div(uniforms.turbulenceStretch.max(0.1)),
+    sin(rotatedAngle2).div(uniforms.turbulenceStretch.max(0.1))
+  );
+  const turbulence1 = fbm(noiseCoord1, uniforms.turbulenceLacunarity, uniforms.turbulencePersistence);
+  const turbulence2 = fbm(noiseCoord2, uniforms.turbulenceLacunarity, uniforms.turbulencePersistence);
+  const turbulence = mix(turbulence2, turbulence1, blendFactor);
+  ringOpacity.assign(pow(clamp(turbulence, float(0.0), float(1.0)), uniforms.turbulenceSharpness));
+
+  const finalOpacity = ringOpacity.mul(edgeFalloff);
+  const finalColor = diskColor.mul(uniforms.diskBrightness);
+  return vec4(finalColor, finalOpacity);
+});
+
+// ============================================================================
+// MAIN RAYMARCHING SHADER
+// ============================================================================
+
+const blackHoleShader = Fn(() => {
+  const rs = uniforms.blackHoleMass.mul(2.0);
+  const uv = screenUV.sub(0.5).mul(2.0);
+  const aspect = uniforms.resolution.x.div(uniforms.resolution.y);
+  const screenPos = vec2(uv.x.mul(aspect), uv.y);
+
+  const camPos = uniforms.cameraPosition;
+  const camTarget = uniforms.cameraTarget;
+  const camForward = normalize(camTarget.sub(camPos));
+  const worldUp = vec3(0.0, 1.0, 0.0);
+  const camRight = normalize(cross(worldUp, camForward));
+  const camUp = cross(camForward, camRight);
+
+  const fov = float(1.0);
+  const rayDir = normalize(
+    camForward.mul(fov).add(camRight.mul(screenPos.x)).add(camUp.mul(screenPos.y))
+  ).toVar('rayDir');
+
+  const rayPos = camPos.toVar('rayPos');
+  const prevPos = camPos.toVar('prevPos');
+  const color = vec3(0.0, 0.0, 0.0).toVar('color');
+  const alpha = float(0.0).toVar('alpha');
+  const escaped = float(0.0).toVar('escaped');
+  const captured = float(0.0).toVar('captured');
+  const innerR = uniforms.diskInnerRadius;
+  const outerR = uniforms.diskOuterRadius;
+
+  Loop(32, () => {
+    If(escaped.greaterThan(0.5).or(captured.greaterThan(0.5)).or(alpha.greaterThan(0.99)), () => {
+      Break();
+    });
+
+    const r = length(rayPos);
+
+    If(r.lessThan(rs.mul(1.01)), () => {
+      captured.assign(1.0);
+      Break();
+    });
+
+    If(r.greaterThan(100.0), () => {
+      escaped.assign(1.0);
+      Break();
+    });
+
+    const toCenter = rayPos.negate().div(r);
+    const bendStrength = rs.div(r.mul(r)).mul(uniforms.stepSize).mul(uniforms.gravitationalLensing);
+    rayDir.addAssign(toCenter.mul(bendStrength));
+    rayDir.assign(normalize(rayDir));
+
+    prevPos.assign(rayPos);
+    rayPos.addAssign(rayDir.mul(uniforms.stepSize));
+
+    const crossedPlane = prevPos.y.mul(rayPos.y).lessThan(0.0);
+    If(crossedPlane.and(alpha.lessThan(0.99)), () => {
+      const t = prevPos.y.negate().div(rayPos.y.sub(prevPos.y));
+      const hitPos = mix(prevPos, rayPos, t);
+      const hitR = sqrt(hitPos.x.mul(hitPos.x).add(hitPos.z.mul(hitPos.z)));
+      const inDisk = hitR.greaterThan(innerR).and(hitR.lessThan(outerR));
+      If(inDisk, () => {
+        const hitAngle = atan(hitPos.z, hitPos.x);
+        const diskResult = accretionDiskColor(hitR, hitAngle, uniforms.time, rayDir);
+        const remainingAlpha = float(1.0).sub(alpha);
+        color.addAssign(diskResult.xyz.mul(diskResult.w).mul(remainingAlpha));
+        alpha.addAssign(remainingAlpha.mul(diskResult.w));
       });
+    });
+  });
 
-      // Configured default metrics matching reference design
-      const config = {
-        blackHoleMass: 0.4,
-        diskInnerRadius: 3.2,
-        diskOuterRadius: 9.8,
-        diskTemperature: 45.0,
-        temperatureFalloff: 4.8,
-        diskBrightness: 4.2,
-        diskRotationSpeed: -2.4,
-        turbulenceScale: 2.2,
-        turbulenceStretch: 0.65,
-        turbulenceSharpness: 7.2,
-        turbulenceCycleTime: 8,
-        turbulenceLacunarity: 2.5,
-        turbulencePersistence: 0.8,
-        diskEdgeSoftnessInner: 0.18,
-        diskEdgeSoftnessOuter: 0.45,
-        gravitationalLensing: 2.2,
-        dopplerStrength: 1.0,
-        stepSize: 0.9,
-        starsEnabled: true,
-        starBackgroundColor: '#020005',
-        starDensity: 0.12,
-        starSize: 1.4,
-        starBrightness: 0.22,
-        nebulaEnabled: true,
-        nebula1Scale: 2.2,
-        nebula1Density: 0.45,
-        nebula1Brightness: 0.015,
-        nebula1Color: '#0b001a',
-        nebula2Scale: 5.0,
-        nebula2Density: 0.08,
-        nebula2Brightness: 0.18,
-        nebula2Color: '#02071c',
-        bloomStrength: 0.65,
-        bloomRadius: 0.0,
-        bloomThreshold: 0.42
-      };
+  If(captured.lessThan(0.5), () => {
+    escaped.assign(1.0);
+  });
 
-      const uniforms = {
-        blackHoleMass: uniform(config.blackHoleMass),
-        diskInnerRadius: uniform(config.diskInnerRadius),
-        diskOuterRadius: uniform(config.diskOuterRadius),
-        diskTemperature: uniform(config.diskTemperature),
-        temperatureFalloff: uniform(config.temperatureFalloff),
-        diskBrightness: uniform(config.diskBrightness),
-        diskRotationSpeed: uniform(config.diskRotationSpeed),
-        turbulenceScale: uniform(config.turbulenceScale),
-        turbulenceStretch: uniform(config.turbulenceStretch),
-        turbulenceSharpness: uniform(config.turbulenceSharpness),
-        turbulenceCycleTime: uniform(config.turbulenceCycleTime),
-        turbulenceLacunarity: uniform(config.turbulenceLacunarity),
-        turbulencePersistence: uniform(config.turbulencePersistence),
-        diskEdgeSoftnessInner: uniform(config.diskEdgeSoftnessInner),
-        diskEdgeSoftnessOuter: uniform(config.diskEdgeSoftnessOuter),
-        gravitationalLensing: uniform(config.gravitationalLensing),
-        dopplerStrength: uniform(config.dopplerStrength),
-        stepSize: uniform(config.stepSize),
-        starsEnabled: uniform(config.starsEnabled ? 1.0 : 0.0),
-        starBackgroundColor: uniform(new THREE.Color(config.starBackgroundColor)),
-        starDensity: uniform(config.starDensity),
-        starSize: uniform(config.starSize),
-        starBrightness: uniform(config.starBrightness),
-        nebulaEnabled: uniform(config.nebulaEnabled ? 1.0 : 0.0),
-        nebula1Color: uniform(new THREE.Color(config.nebula1Color)),
-        nebula1Scale: uniform(config.nebula1Scale),
-        nebula1Density: uniform(config.nebula1Density),
-        nebula1Brightness: uniform(config.nebula1Brightness),
-        nebula2Color: uniform(new THREE.Color(config.nebula2Color)),
-        nebula2Scale: uniform(config.nebula2Scale),
-        nebula2Density: uniform(config.nebula2Density),
-        nebula2Brightness: uniform(config.nebula2Brightness),
-        time: uniform(0),
-        resolution: uniform(new THREE.Vector2(window.innerWidth, window.innerHeight)),
-        cameraPosition: uniform(new THREE.Vector3(0, 3.2, 15.0)),
-        cameraTarget: uniform(new THREE.Vector3(0, 0, 0))
-      };
+  If(escaped.greaterThan(0.5).and(alpha.lessThan(0.99)), () => {
+    const bgColor = uniforms.starBackgroundColor.toVar('bgColor');
+    If(uniforms.starsEnabled.greaterThan(0.5), () => {
+      bgColor.addAssign(starField(rayDir));
+    });
+    If(uniforms.nebulaEnabled.greaterThan(0.5), () => {
+      bgColor.addAssign(nebulaField(rayDir));
+    });
+    color.addAssign(bgColor.mul(float(1.0).sub(alpha)));
+  });
 
-      const hash21 = Fn(([p]) => {
-        const n = sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453);
-        return fract(n);
-      });
+  const finalColor = pow(color, vec3(1.0 / 2.2));
+  return vec4(finalColor, 1.0);
+})();
 
-      const hash31 = Fn(([p]) => {
-        const n = sin(dot(p, vec3(127.1, 311.7, 74.7))).mul(43758.5453);
-        return fract(n);
-      });
+// ============================================================================
+// SCENE SETUP
+// ============================================================================
 
-      const hash22 = Fn(([p]) => {
-        const px = fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
-        const py = fract(sin(dot(p, vec2(269.5, 183.3))).mul(43758.5453));
-        return vec2(px, py);
-      });
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
 
-      const noise3D = Fn(([p]) => {
-        const i = floor(p);
-        const f = fract(p);
-        const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
-        const a = hash31(i);
-        const b = hash31(i.add(vec3(1, 0, 0)));
-        const c = hash31(i.add(vec3(0, 1, 0)));
-        const d = hash31(i.add(vec3(1, 1, 0)));
-        const e = hash31(i.add(vec3(0, 0, 1)));
-        const f2 = hash31(i.add(vec3(1, 0, 1)));
-        const g = hash31(i.add(vec3(0, 1, 1)));
-        const h = hash31(i.add(vec3(1, 1, 1)));
-        return mix(
-          mix(mix(a, b, u.x), mix(c, d, u.x), u.y),
-          mix(mix(e, f2, u.x), mix(g, h, u.x), u.y),
-          u.z
-        );
-      });
+const canvas = document.getElementById('bg-canvas');
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, -2, -18);
+camera.lookAt(0, 0, 0);
 
-      const fbm = Fn(([p, lacunarity, persistence]) => {
-        const value = float(0.0).toVar();
-        const amplitude = float(0.5).toVar();
-        const pos = p.toVar();
-        value.addAssign(noise3D(pos).mul(amplitude));
-        pos.mulAssign(lacunarity); amplitude.mulAssign(persistence);
-        value.addAssign(noise3D(pos).mul(amplitude));
-        pos.mulAssign(lacunarity); amplitude.mulAssign(persistence);
-        value.addAssign(noise3D(pos).mul(amplitude));
-        pos.mulAssign(lacunarity); amplitude.mulAssign(persistence);
-        value.addAssign(noise3D(pos).mul(amplitude));
-        return value;
-      });
+const renderer = new THREE.WebGPURenderer({ antialias: true, canvas: canvas });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
-      const getCinematicColor = Fn(([hitR]) => {
-        const innerR = uniforms.diskInnerRadius;
-        const outerR = uniforms.diskOuterRadius;
-        const normR = clamp(hitR.sub(innerR).div(outerR.sub(innerR)), float(0.0), float(1.0));
-        const colorInner = vec3(1.3, 0.95, 0.8);
-        const colorMid = vec3(1.0, 0.42, 0.04);
-        const colorOuter = vec3(0.48, 0.06, 0.72);
-        return mix(mix(colorInner, colorMid, smoothstep(float(0.0), float(0.35), normR)), colorOuter, smoothstep(float(0.35), float(1.0), normR));
-      });
+// Create black hole mesh
+const geometry = new THREE.SphereGeometry(100, 32, 32);
+geometry.scale(-1, 1, 1);
+const material = new THREE.MeshBasicNodeMaterial();
+material.colorNode = blackHoleShader;
+const mesh = new THREE.Mesh(geometry, material);
+mesh.frustumCulled = false;
+scene.add(mesh);
 
-      const starField = Fn(([rayDir]) => {
-        const theta = atan(rayDir.z, rayDir.x);
-        const phi = asin(clamp(rayDir.y, float(-1.0), float(1.0)));
-        const gridScale = float(60.0).div(uniforms.starSize);
-        const scaledCoord = vec2(theta, phi).mul(gridScale);
-        const cell = floor(scaledCoord);
-        const cellUV = fract(scaledCoord);
-        const cellHash = hash21(cell);
-        const starProb = step(float(1.0).sub(uniforms.starDensity), cellHash);
-        const starPos = hash22(cell.add(42.0)).mul(0.8).add(0.1);
-        const distToStar = length(cellUV.sub(starPos));
-        const baseSizeVar = hash21(cell.add(100.0)).mul(0.03).add(0.01);
-        const finalStarSize = baseSizeVar.mul(uniforms.starSize);
-        const starCore = smoothstep(finalStarSize, float(0.0), distToStar);
-        const starGlow = smoothstep(finalStarSize.mul(3.0), float(0.0), distToStar).mul(0.3);
-        const starIntensity = starCore.add(starGlow).mul(starProb);
-        const colorTemp = hash21(cell.add(200.0));
-        const starColor = mix(vec3(0.8, 0.9, 1.0), vec3(1.0, 0.95, 0.8), colorTemp);
-        return starColor.mul(starIntensity).mul(uniforms.starBrightness);
-      });
+// ============================================================================
+// ANIMATION & SCROLL CONTROLS
+// ============================================================================
 
-      const nebulaField = Fn(([rayDir]) => {
-        const noisePos1 = rayDir.mul(uniforms.nebula1Scale);
-        const n1 = fbm(noisePos1, float(2.0), float(0.5)).mul(2.0).sub(1.0);
-        const layer1 = clamp(n1.add(uniforms.nebula1Density), float(0.0), float(1.0));
-        const color1 = uniforms.nebula1Color.mul(layer1).mul(uniforms.nebula1Brightness);
-        const noisePos2 = rayDir.mul(uniforms.nebula2Scale);
-        const n2 = fbm(noisePos2, float(2.0), float(0.5)).mul(2.0).sub(1.0);
-        const layer2 = clamp(n2.add(uniforms.nebula2Density), float(0.0), float(1.0));
-        const color2 = uniforms.nebula2Color.mul(layer2).mul(uniforms.nebula2Brightness);
-        return color1.add(color2);
-      });
+let postProcessing = null;
+let lastFrameTime = performance.now();
 
-      const accretionDiskColor = Fn(([hitR, hitAngle, time, rayDir]) => {
-        const innerR = uniforms.diskInnerRadius;
-        const outerR = uniforms.diskOuterRadius;
-        const normR = clamp(hitR.sub(innerR).div(outerR.sub(innerR)), float(0.0), float(1.0));
+let mouseX = 0, mouseY = 0;
+window.addEventListener('mousemove', (e) => {
+  mouseX = (e.clientX / window.innerWidth) - 0.5;
+  mouseY = (e.clientY / window.innerHeight) - 0.5;
+});
 
-        const peakTempK = uniforms.diskTemperature.mul(1000.0);
-        const outerTempK = float(1500.0);
-        const tempFalloff = pow(innerR.div(hitR), uniforms.temperatureFalloff);
-        const tempK = mix(outerTempK, peakTempK, tempFalloff);
-        const diskColor = getCinematicColor(hitR).toVar('diskColor');
+function updateCamera() {
+  const scrollPercent = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight || 1);
+  
+  // Camera zooms straight into the event horizon as scrollPercent increases.
+  // Starting distance is 18.0. Entering inside event horizon (r_s = 0.8) at the bottom.
+  const startDistance = 18.0;
+  const endDistance = 0.5; // Inside event horizon
+  const distance = startDistance - (startDistance - endDistance) * scrollPercent;
 
-        const rotationSign = sign(uniforms.diskRotationSpeed);
-        const velocityDir = vec3(
-          sin(hitAngle).negate().mul(rotationSign),
-          float(0.0),
-          cos(hitAngle).mul(rotationSign)
-        );
-        const velocityMagnitude = float(1.0).div(sqrt(hitR.div(innerR)));
-        const beta = velocityMagnitude.mul(0.3);
-        const cosTheta = dot(velocityDir, rayDir);
-        const dopplerFactor = float(1.0).div(float(1.0).sub(beta.mul(cosTheta)));
-        const dopplerBoost = pow(dopplerFactor, float(3.0).mul(uniforms.dopplerStrength));
-        diskColor.mulAssign(clamp(dopplerBoost, float(0.1), float(5.0)));
+  // Slowly rotate over time, with minor mouse offset for parallax
+  const orbitAngle = uniforms.time.value * 0.03 + mouseX * 1.5;
+  const orbitHeight = (-2.0 + mouseY * 4.5) * (1.0 - scrollPercent);
 
-        const edgeFalloff = smoothstep(float(0.0), uniforms.diskEdgeSoftnessInner, normR)
-          .mul(smoothstep(float(1.0), float(1.0).sub(uniforms.diskEdgeSoftnessOuter), normR));
+  camera.position.set(
+    Math.cos(orbitAngle) * distance,
+    orbitHeight,
+    Math.sin(orbitAngle) * distance
+  );
+  camera.lookAt(0, 0, 0);
 
-        const ringOpacity = float(1.0).toVar('ringOpacity');
-        const cycleLength = uniforms.turbulenceCycleTime;
-        const cyclicTime = time.mod(cycleLength);
-        const blendFactor = cyclicTime.div(cycleLength);
-        const keplerianPhase1 = cyclicTime.mul(uniforms.diskRotationSpeed).div(pow(hitR, float(1.5)));
-        const keplerianPhase2 = cyclicTime.add(cycleLength).mul(uniforms.diskRotationSpeed).div(pow(hitR, float(1.5)));
-        const rotatedAngle1 = hitAngle.add(keplerianPhase1);
-        const rotatedAngle2 = hitAngle.add(keplerianPhase2);
-        const noiseCoord1 = vec3(
-          hitR.mul(uniforms.turbulenceScale),
-          cos(rotatedAngle1).div(uniforms.turbulenceStretch.max(0.1)),
-          sin(rotatedAngle1).div(uniforms.turbulenceStretch.max(0.1))
-        );
-        const noiseCoord2 = vec3(
-          hitR.mul(uniforms.turbulenceScale),
-          cos(rotatedAngle2).div(uniforms.turbulenceStretch.max(0.1)),
-          sin(rotatedAngle2).div(uniforms.turbulenceStretch.max(0.1))
-        );
-        const turbulence1 = fbm(noiseCoord1, uniforms.turbulenceLacunarity, uniforms.turbulencePersistence);
-        const turbulence2 = fbm(noiseCoord2, uniforms.turbulenceLacunarity, uniforms.turbulencePersistence);
-        const turbulence = mix(turbulence2, turbulence1, blendFactor);
-        ringOpacity.assign(pow(clamp(turbulence, float(0.0), float(1.0)), uniforms.turbulenceSharpness));
+  uniforms.cameraPosition.value.copy(camera.position);
+  
+  const direction = new THREE.Vector3(0, 0, -1);
+  direction.applyQuaternion(camera.quaternion);
+  const target = camera.position.clone().add(direction.multiplyScalar(10));
+  uniforms.cameraTarget.value.copy(target);
+}
 
-        const finalOpacity = ringOpacity.mul(edgeFalloff);
-        const finalColor = diskColor.mul(uniforms.diskBrightness);
-        return vec4(finalColor, finalOpacity);
-      });
+function animate() {
+  requestAnimationFrame(animate);
+  const currentTime = performance.now();
+  const deltaTime = Math.min((currentTime - lastFrameTime) / 1000, 0.033);
+  lastFrameTime = currentTime;
 
-      const blackHoleShader = Fn(() => {
-        const rs = uniforms.blackHoleMass.mul(2.0);
-        const uv = screenUV.sub(0.5).mul(2.0);
-        const aspect = uniforms.resolution.x.div(uniforms.resolution.y);
-        const screenPos = vec2(uv.x.mul(aspect), uv.y);
+  uniforms.time.value += deltaTime;
+  updateCamera();
 
-        const camPos = uniforms.cameraPosition;
-        const camTarget = uniforms.cameraTarget;
-        const camForward = normalize(camTarget.sub(camPos));
-        const worldUp = vec3(0.0, 1.0, 0.0);
-        const camRight = normalize(cross(worldUp, camForward));
-        const camUp = cross(camForward, camRight);
+  if (postProcessing) {
+    postProcessing.render();
+  } else {
+    renderer.render(scene, camera);
+  }
+}
 
-        const fov = float(1.05);
-        const rayDir = normalize(
-          camForward.mul(fov).add(camRight.mul(screenPos.x)).add(camUp.mul(screenPos.y))
-        ).toVar('rayDir');
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+});
 
-        const rayPos = camPos.toVar('rayPos');
-        const prevPos = camPos.toVar('prevPos');
-        const color = vec3(0.0, 0.0, 0.0).toVar('color');
-        const alpha = float(0.0).toVar('alpha');
-        const escaped = float(0.0).toVar('escaped');
-        const captured = float(0.0).toVar('captured');
-        const innerR = uniforms.diskInnerRadius;
-        const outerR = uniforms.diskOuterRadius;
-
-        Loop(42, () => {
-          If(escaped.greaterThan(0.5).or(captured.greaterThan(0.5)).or(alpha.greaterThan(0.99)), () => {
-            Break();
-          });
-
-          const r = length(rayPos);
-
-          If(r.lessThan(rs.mul(1.01)), () => {
-            captured.assign(1.0);
-            Break();
-          });
-
-          If(r.greaterThan(35.0), () => {
-            escaped.assign(1.0);
-            Break();
-          });
-
-          const toCenter = rayPos.negate().div(r);
-          const bendStrength = rs.div(r.mul(r)).mul(uniforms.stepSize).mul(uniforms.gravitationalLensing);
-          rayDir.addAssign(toCenter.mul(bendStrength));
-          rayDir.assign(normalize(rayDir));
-
-          prevPos.assign(rayPos);
-          rayPos.addAssign(rayDir.mul(uniforms.stepSize));
-
-          const crossedPlane = prevPos.y.mul(rayPos.y).lessThan(0.0);
-          If(crossedPlane.and(alpha.lessThan(0.99)), () => {
-            const t = prevPos.y.negate().div(rayPos.y.sub(prevPos.y));
-            const hitPos = mix(prevPos, rayPos, t);
-            const hitR = sqrt(hitPos.x.mul(hitPos.x).add(hitPos.z.mul(hitPos.z)));
-            const inDisk = hitR.greaterThan(innerR).and(hitR.lessThan(outerR));
-            If(inDisk, () => {
-              const hitAngle = atan(hitPos.z, hitPos.x);
-              const diskResult = accretionDiskColor(hitR, hitAngle, uniforms.time, rayDir);
-              const remainingAlpha = float(1.0).sub(alpha);
-              color.addAssign(diskResult.xyz.mul(diskResult.w).mul(remainingAlpha));
-              alpha.addAssign(remainingAlpha.mul(diskResult.w));
-            });
-          });
-        });
-
-        If(captured.lessThan(0.5), () => {
-          escaped.assign(1.0);
-        });
-
-        If(escaped.greaterThan(0.5).and(alpha.lessThan(0.99)), () => {
-          const bgColor = uniforms.starBackgroundColor.toVar('bgColor');
-          If(uniforms.starsEnabled.greaterThan(0.5), () => {
-            bgColor.addAssign(starField(rayDir));
-          });
-          If(uniforms.nebulaEnabled.greaterThan(0.5), () => {
-            bgColor.addAssign(nebulaField(rayDir));
-          });
-          color.addAssign(bgColor.mul(float(1.0).sub(alpha)));
-        });
-
-        const finalColor = pow(color, vec3(1.0 / 2.2));
-        return vec4(finalColor, 1.0);
-      });
-
-      function launchWebGLFallback() {
-        const gl = canvas.getContext('webgl');
-        if (!gl) return;
-
-        const vsSource = `
-          attribute vec2 position;
-          void main() {
-            gl_Position = vec4(position, 0.0, 1.0);
-          }
-        `;
-
-        const fsSource = `
-          precision highp float;
-          uniform vec2 u_resolution;
-          uniform float u_time;
-          uniform vec2 u_mouse;
-          uniform float u_scroll;
-
-          float hash3D(vec3 p) {
-              return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
-          }
-
-          float noise3D(vec3 p) {
-              vec3 i = floor(p);
-              vec3 f = fract(p);
-              vec3 u = f*f*(3.0-2.0*f);
-              return mix(
-                  mix(
-                      mix(hash3D(i + vec3(0.0,0.0,0.0)), hash3D(i + vec3(1.0,0.0,0.0)), u.x),
-                      mix(hash3D(i + vec3(0.0,1.0,0.0)), hash3D(i + vec3(1.0,1.0,0.0)), u.x),
-                      u.y
-                  ),
-                  mix(
-                      mix(hash3D(i + vec3(0.0,0.0,1.0)), hash3D(i + vec3(1.0,0.0,1.0)), u.x),
-                      mix(hash3D(i + vec3(0.0,1.0,1.0)), hash3D(i + vec3(1.0,1.0,1.0)), u.x),
-                      u.y
-                  ),
-                  u.z
-              );
-          }
-
-          float fbmVal(vec3 p) {
-              float v = 0.0;
-              float a = 0.5;
-              vec3 shift = vec3(100.0);
-              for (int i = 0; i < 4; ++i) {
-                  v += a * noise3D(p);
-                  p = p * 2.0 + shift;
-                  a *= 0.5;
-              }
-              return v;
-          }
-
-          vec3 getCinematicColor(float hitR, float innerR, float outerR) {
-              float normR = clamp((hitR - innerR) / (outerR - innerR), 0.0, 1.0);
-              vec3 colorInner = vec3(1.3, 0.95, 0.8);
-              vec3 colorMid = vec3(1.0, 0.42, 0.04);
-              vec3 colorOuter = vec3(0.48, 0.06, 0.72);
-              vec3 c = mix(colorInner, colorMid, smoothstep(0.0, 0.35, normR));
-              return mix(c, colorOuter, smoothstep(0.35, 1.0, normR));
-          }
-
-          void main() {
-              vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
-              vec2 mouse = (u_mouse.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
-              
-              float startDistance = 15.0;
-              float endDistance = 0.45;
-              float distance = startDistance - (startDistance - endDistance) * u_scroll;
-
-              float angle = u_time * 0.04 + mouse.x * 1.5;
-              float height = (3.2 - mouse.y * 4.5) * (1.0 - u_scroll);
-              vec3 camPos = vec3(cos(angle) * distance, height, sin(angle) * distance);
-              vec3 camTarget = vec3(0.0, 0.0, 0.0);
-              
-              vec3 camForward = normalize(camTarget - camPos);
-              vec3 worldUp = vec3(0.0, 1.0, 0.0);
-              vec3 camRight = normalize(cross(worldUp, camForward));
-              vec3 camUp = cross(camForward, camRight);
-              
-              float fov = 1.35;
-              vec3 rayDir = normalize(camForward * fov + camRight * uv.x + camUp * uv.y);
-              vec3 rayPos = camPos;
-              vec3 prevPos = camPos;
-              
-              float innerR = 3.2;
-              float outerR = 9.5;
-              float rs = 0.8;
-              float stepSize = 0.18;
-              
-              vec3 color = vec3(0.0);
-              float alpha = 0.0;
-              bool captured = false;
-              
-              for (int i = 0; i < 45; i++) {
-                  float r = length(rayPos);
-                  if (r < rs * 1.002) {
-                      captured = true;
-                      break;
-                  }
-                  if (r > 32.0) break;
-                  
-                  if (prevPos.y * rayPos.y < 0.0) {
-                      float t = -prevPos.y / (rayPos.y - prevPos.y);
-                      vec3 hitPos = mix(prevPos, rayPos, t);
-                      float hitR = length(hitPos.xz);
-                      
-                      if (hitR > innerR && hitR < outerR) {
-                          float hitAngle = atan(hitPos.z, hitPos.x);
-                          
-                          float rotationSpeed = -2.2;
-                          float cycleLength = 8.0;
-                          float cyclicTime = mod(u_time, cycleLength);
-                          float blendFactor = cyclicTime / cycleLength;
-                          
-                          float phase1 = cyclicTime * rotationSpeed / (pow(hitR, 1.5) + 0.001);
-                          float phase2 = (cyclicTime + cycleLength) * rotationSpeed / (pow(hitR, 1.5) + 0.001);
-                          
-                          float rotatedAngle1 = hitAngle + phase1;
-                          float rotatedAngle2 = hitAngle + phase2;
-                          
-                          vec3 noiseCoord1 = vec3(hitR * 9.0, cos(rotatedAngle1) / 0.12, sin(rotatedAngle1) / 0.12);
-                          vec3 noiseCoord2 = vec3(hitR * 9.0, cos(rotatedAngle2) / 0.12, sin(rotatedAngle2) / 0.12);
-                          
-                          float turbulence1 = fbmVal(noiseCoord1);
-                          float turbulence2 = fbmVal(noiseCoord2);
-                          float noiseVal = mix(turbulence2, turbulence1, blendFactor);
-                          
-                          vec3 tempColor = getCinematicColor(hitR, innerR, outerR);
-                          
-                          float diskProfile = smoothstep(0.0, 0.12, normR) * (1.0 - smoothstep(0.8, 1.0, normR));
-                          
-                          vec3 velocityDir = vec3(-sin(hitAngle), 0.0, cos(hitAngle));
-                          float velocityMagnitude = 1.0 / (sqrt(hitR / innerR) + 0.001);
-                          float beta = velocityMagnitude * 0.45;
-                          float cosTheta = dot(velocityDir, rayDir);
-                          float dopplerFactor = 1.0 / (1.0 - beta * cosTheta);
-                          float dopplerBoost = pow(dopplerFactor, 3.0);
-                          
-                          float diskIntensity = diskProfile * (0.05 + 0.95 * noiseVal) * clamp(dopplerBoost, 0.15, 7.5);
-                          float diskAlpha = diskProfile * (0.2 + 0.8 * noiseVal);
-                          vec3 diskRGB = tempColor * diskIntensity * 1.9;
-                          
-                          float remainingAlpha = 1.0 - alpha;
-                          color += diskRGB * remainingAlpha;
-                          alpha += diskAlpha * remainingAlpha;
-                          
-                          if (alpha > 0.98) break;
-                      }
-                  }
-                  
-                  vec3 toCenter = -normalize(rayPos);
-                  float bendStrength = (rs / (r * r)) * stepSize * 1.5;
-                  rayDir = normalize(rayDir + toCenter * bendStrength);
-                  
-                  prevPos = rayPos;
-                  rayPos += rayDir * stepSize;
-              }
-              
-              vec3 spaceNebula = vec3(0.0);
-              if (!captured) {
-                  float neb1 = fbmVal(rayDir * 2.2 + vec3(u_time * 0.01));
-                  float neb2 = fbmVal(rayDir * 4.5 - vec3(u_time * 0.005));
-                  
-                  vec3 spaceColor = vec3(0.004, 0.002, 0.01);
-                  vec3 nebColor1 = vec3(0.35, 0.1, 0.7);
-                  vec3 nebColor2 = vec3(0.05, 0.15, 0.45);
-                  vec3 nebula = mix(nebColor1, nebColor2, neb2) * neb1;
-                  
-                  float stars = smoothstep(0.86, 1.0, hash3D(floor(rayDir * 160.0))) * 0.75;
-                  stars *= 0.5 + 0.5 * sin(u_time * 2.2 + hash3D(floor(rayDir * 160.0)) * 6.28);
-                  spaceNebula = spaceColor + nebula * 0.35 + vec3(stars);
-              }
-              
-              vec3 finalColor = color + spaceNebula * (1.0 - alpha);
-              gl_FragColor = vec4(finalColor, 1.0);
-          }
-        `;
-
-        function buildShader(type, src) {
-          const s = gl.createShader(type);
-          gl.shaderSource(s, src);
-          gl.compileShader(s);
-          return s;
-        }
-
-        const vs = buildShader(gl.VERTEX_SHADER, vsSource);
-        const fs = buildShader(gl.FRAGMENT_SHADER, fsSource);
-        const program = gl.createProgram();
-        gl.attachShader(program, vs);
-        gl.attachShader(program, fs);
-        gl.linkProgram(program);
-
-        const posAttr = gl.getAttribLocation(program, 'position');
-        const resUni = gl.getUniformLocation(program, 'u_resolution');
-        const timeUni = gl.getUniformLocation(program, 'u_time');
-        const mouseUni = gl.getUniformLocation(program, 'u_mouse');
-        const scrollUni = gl.getUniformLocation(program, 'u_scroll');
-
-        const buffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
-
-        let webglTime = 0;
-        function resizeWebGL() {
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
-          gl.viewport(0, 0, canvas.width, canvas.height);
-        }
-        window.addEventListener('resize', resizeWebGL);
-        resizeWebGL();
-
-        function renderWebGL(t) {
-          webglTime = t * 0.001;
-          const scrollPercent = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight || 1);
-
-          gl.useProgram(program);
-          gl.enableVertexAttribArray(posAttr);
-          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-          gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
-
-          gl.uniform2f(resUni, canvas.width, canvas.height);
-          gl.uniform1f(timeUni, webglTime);
-          gl.uniform2f(mouseUni, mouseX * canvas.width, mouseY * canvas.height);
-          gl.uniform1f(scrollUni, scrollPercent);
-
-          gl.drawArrays(gl.TRIANGLES, 0, 6);
-          requestAnimationFrame(renderWebGL);
-        }
-        requestAnimationFrame(renderWebGL);
-      }
-
-      // Initialize WebGPU parameters
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x000000);
-
-      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 3.2, 15.0);
-      camera.lookAt(0, 0, 0);
-
-      const renderer = new THREE.WebGPURenderer({ antialias: true, canvas: canvas });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-      const cameraDirection = new THREE.Vector3(0, 0, -1);
-      const targetLookAt = new THREE.Vector3(0, 0, 0);
-
-      const geometry = new THREE.SphereGeometry(100, 32, 32);
-      geometry.scale(-1, 1, 1);
-      const material = new THREE.MeshBasicNodeMaterial();
-      material.colorNode = blackHoleShader;
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.frustumCulled = false;
-      scene.add(mesh);
-
-      let lastFrameTime = performance.now();
-
-      function updateCamera() {
-        const scrollPercent = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight || 1);
-        
-        // Zooming in on scroll
-        const startDistance = 15.0;
-        const endDistance = 0.45;
-        const distance = startDistance - (startDistance - endDistance) * scrollPercent;
-        
-        // Parallax and slow rotation
-        const orbitAngle = uniforms.time.value * 0.04 + mouseX * 1.5;
-        const orbitHeight = (3.2 + mouseY * 4.5) * (1.0 - scrollPercent);
-
-        camera.position.set(
-          Math.cos(orbitAngle) * distance,
-          orbitHeight,
-          Math.sin(orbitAngle) * distance
-        );
-        camera.lookAt(0, 0, 0);
-
-        uniforms.cameraPosition.value.copy(camera.position);
-        
-        cameraDirection.set(0, 0, -1).applyQuaternion(camera.quaternion);
-        targetLookAt.copy(camera.position).add(cameraDirection.multiplyScalar(10));
-        uniforms.cameraTarget.value.copy(targetLookAt);
-      }
-
-      function animate() {
-        requestAnimationFrame(animate);
-        const currentTime = performance.now();
-        const deltaTime = Math.min((currentTime - lastFrameTime) / 1000, 0.033);
-        lastFrameTime = currentTime;
-
-        uniforms.time.value += deltaTime;
-        updateCamera();
-
-        renderer.render(scene, camera);
-      }
-
-      window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
-      });
-
-      // Launch WebGPU or WebGL Fallback
-      renderer.init().then(() => {
-        animate();
-      }).catch(err => {
-        console.warn('WebGPU failed, starting WebGL Fallback:', err);
-        launchWebGLFallback();
-      });
-    })();
+// Initialize WebGPU
+renderer.init().then(() => {
+  postProcessing = new THREE.PostProcessing(renderer);
+  const scenePass = pass(scene, camera);
+  const scenePassColor = scenePass.getTextureNode();
+  const bloomPass = bloom(scenePassColor);
+  bloomPass.threshold.value = config.bloomThreshold;
+  bloomPass.strength.value = config.bloomStrength;
+  bloomPass.radius.value = config.bloomRadius;
+  postProcessing.outputNode = scenePassColor.add(bloomPass);
+  animate();
+}).catch(err => {
+  console.warn('WebGPU failed, running WebGL Fallback:', err);
+  // Optional: insert WebGL fallback logic here or do nothing
+});
   </script>
+
 
 </body>
 

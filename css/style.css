@@ -124,7 +124,7 @@ h4:before {
 }
 
 .h-50 {
-  height: 50px;
+  height: 25px;
 }
 
 /* preloader
@@ -382,7 +382,7 @@ nav li a {
 
 .section:not(#home) {
   position: relative;
-  padding: 60px 0 !important;
+  padding: 45px 0 !important;
 }
 
 .section:not(#home) > * {
@@ -392,7 +392,7 @@ nav li a {
 
 @media (max-width: 768px) {
   .section:not(#home) {
-    padding: 40px 0 !important;
+    padding: 30px 0 !important;
   }
   .section:not(#home) > .container {
     padding: 0 15px !important;
